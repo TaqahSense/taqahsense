@@ -1,65 +1,47 @@
-import os
 import pandas as pd
+import numpy as np
 from sklearn.ensemble import IsolationForest
-from supabase import create_client, Client
-from dotenv import load_dotenv
 
-# Load environment variables
-load_dotenv()
-
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
-
-# Initialize Supabase client
-supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-
-def fetch_readings():
-    # Fetch energy readings from Supabase table
-    response = supabase.table("energy_readings").select("*").execute()
-    return pd.DataFrame(response.data)
-
-def detect_and_update_anomalies():
-    print("Fetching data from Supabase for AI analysis...")
-    df = fetch_readings()
+def detect_anomalies_with_source():
+    print("🤖 Running AI Anomaly Detection with Source Identification...")
     
-    if df.empty:
-        print("No data found in the table yet.")
+    # قراءة البيانات المحدثة
+    try:
+        df = pd.read_csv('cleaned_commercial_building_power.csv')
+    except FileNotFoundError:
+        print("❌ Error: Cleaned data file not found. Please run clean_data.py first.")
         return
 
-    features = ['global_active_power', 'voltage', 'global_intensity']
-    X = df[features].dropna()
-
-    if len(X) < 5:
-        print("Not enough data points to run Isolation Forest model yet.")
-        return
-
-    print("Training Isolation Forest model...")
-    model = IsolationForest(contamination=0.05, random_state=42)
+    # الأعمدة الخاصة بالعدادات الفرعية الجديدة
+    sub_meters = ['Kitchen & Cafeteria', 'HVAC Systems', 'Smart Lighting', 'Server Room']
     
-    # Predict (-1 for anomalies, 1 for normal)
-    preds = model.fit_predict(X)
-    df['anomaly'] = preds
+    # تدريب نموذج Isolation Forest على القدرة الفعالة أو العدادات الفرعية
+    features = ['global_active_power'] + sub_meters
+    X = df[features]
     
-    # Filter anomalies
-    anomalies = df[df['anomaly'] == -1]
-    print(f"Analysis complete! Found {len(anomalies)} anomalies out of {len(df)} readings.")
+    model = IsolationForest(contamination=0.03, random_state=42)
+    df['anomaly'] = model.fit_predict(X)
+    
+    # تحديد الشذوذ (-1 يعني شذوذ)
+    anomalies_df = df[df['anomaly'] == -1].copy()
+    
+    # دالة لتحديد المصدر بدقة بناءً على أي عداد فرعي سجل أعلى قيمة شاذة
+    def identify_source(row):
+        values = {col: row[col] for col in sub_meters}
+        # العداد الذي يحمل أعلى استهلاك لحظي غالباً هو مصدر الشذوذ أو الحمل الزائد
+        max_source = max(values, key=values.get)
+        return max_source
 
-    print("Updating Supabase with anomaly flags...")
-    
-    # Loop through the data and update the database flags if needed
-    for index, row in df.iterrows():
-        row_id = row['id']
-        is_anomaly_flag = True if row['anomaly'] == -1 else False
+    if not anomalies_df.empty:
+        anomalies_df['anomaly_source'] = anomalies_df.apply(identify_source, axis=1)
+        print(f"⚠️ Detected {len(anomalies_df)} anomalies with identified sources!")
         
-        # Update the record in Supabase (Assuming you have or will add an 'is_anomaly' column, 
-        # or we can print/track them directly)
-        try:
-            supabase.table("energy_readings").update({"is_anomaly": is_anomaly_flag}).eq("id", row_id).execute()
-        except Exception as e:
-            # If the column 'is_anomaly' doesn't exist yet, we catch it gracefully
-            pass
-
-    print("Database successfully synchronized with AI anomaly flags!")
+        # حفظ النتائج أو عرض عينة منها
+        anomalies_df[['timestamp', 'global_active_power', 'anomaly_source']].to_head = anomalies_df.head()
+        anomalies_df.to_csv('detected_anomalies_with_sources.csv', index=False)
+        print("✅ Anomaly detection results saved to 'detected_anomalies_with_sources.csv'.")
+    else:
+        print("✨ No anomalies detected in the current window.")
 
 if __name__ == "__main__":
-    detect_and_update_anomalies()
+    detect_anomalies_with_source()

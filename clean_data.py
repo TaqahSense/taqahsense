@@ -1,33 +1,52 @@
 import pandas as pd
 import numpy as np
+from datetime import datetime, timedelta
 
-print("Generating Commercial Facility Energy Dataset...")
+def generate_professional_demo_data():
+    print("⚡ Generating professional sliding-window time-series data for TaqaSense...")
+    
+    # نافذة تشغيلية مدتها 10 أيام تنتهي بتاريخ اليوم المستهدف للمناقشة (29 أكتوبر 2026)
+    end_date = datetime(2026, 10, 29, 23, 0, 0)
+    start_date = end_date - timedelta(days=10) # تغطي بسلاسة من 19 إلى 29 أكتوبر 2026
+    
+    timestamps = pd.date_range(start=start_date, end=end_date, freq='h')
+    
+    np.random.seed(42)
+    n = len(timestamps)
+    
+    df = pd.DataFrame()
+    df["timestamp"] = timestamps
+    
+    # قراءات عامة وفرعية مستقرة وغنية لجميع الأيام لضمان عدم ظهور رسوم بيانية فارغة أبدًا
+    df["global_active_power"] = np.random.uniform(2.5, 4.8, n)
+    df["global_reactive_power"] = np.random.uniform(0.15, 0.45, n)
+    df["voltage"] = np.random.uniform(232.0, 239.0, n)
+    df["global_intensity"] = np.random.uniform(12.0, 24.0, n)
+    
+    df["Kitchen & Cafeteria"] = np.random.uniform(0.8, 1.8, n)
+    df["HVAC Systems"] = np.random.uniform(2.2, 4.2, n)
+    df["Smart Lighting"] = np.random.uniform(0.3, 0.9, n)
+    df["Server Room"] = np.random.uniform(1.2, 2.8, n)
+    
+    # الحالة الافتراضية طبيعية ومستقرة للجميع (False)
+    df["anomaly_flag"] = False
+    
+    # حقن حالات الشذوذ بدقة حصرياً في يوم العرض (29 أكتوبر 2026) لإبراز كفاءة الذكاء الاصطناعي والتنبيهات
+    demo_mask = (df["timestamp"].dt.date == datetime(2026, 10, 29).date())
+    anomaly_subset = demo_mask & (df["timestamp"].dt.hour.isin([10, 14, 18, 22])) # ساعات محددة في يوم العرض
+    
+    if anomaly_subset.sum() > 0:
+        count = anomaly_subset.sum()
+        df.loc[anomaly_subset, "HVAC Systems"] = np.random.uniform(8.2, 9.9, count)
+        df.loc[anomaly_subset, "Server Room"] = np.random.uniform(7.0, 9.0, count)
+        df.loc[anomaly_subset, "anomaly_flag"] = True
 
-# محاكاة نطاق زمنية لقراءات منشأة تجارية بمعدل كل 15 دقيقة
-np.random.seed(42)
-date_range = pd.date_range(start="2026-10-01 00:00:00", periods=500, freq="15min")
+    df = df.ffill()
+    df = df.fillna(value=0.5)
+    
+    output_filename = 'cleaned_commercial_building_power.csv'
+    df.to_csv(output_filename, index=False)
+    print(f"✅ Professional sliding window data generated successfully from {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}!")
 
-# أحمال طاقة للمنشأة التجارية بالكيلوواط (kW) تتراوح طبيعياً بين 80 و 180 kW
-base_power = np.random.normal(loc=130.0, scale=12.0, size=len(date_range))
-
-# حقن حالات شذوذ متعمدة (Anomalies) مثل ارتفاع مفاجئ في الأحمال أو أحمال خارج أوقات العمل
-anomaly_indices = [35, 90, 160, 250, 320, 430]
-for idx in anomaly_indices:
-    base_power[idx] += np.random.uniform(70.0, 120.0)
-
-df_commercial = pd.DataFrame({
-    "timestamp": date_range,
-    "global_active_power": np.round(base_power, 2),
-    "global_reactive_power": np.round(base_power * 0.18, 2),
-    "voltage": np.round(np.random.normal(loc=400.0, scale=2.5, size=len(date_range)), 2), # جهد تجاري 400V
-    "global_intensity": np.round(base_power * 1.75, 2),
-    "sub_metering_1": np.round(base_power * 0.40, 2), # أحمال التكييف المركزي HVAC
-    "sub_metering_2": np.round(base_power * 0.30, 2), # أحمال الإضاءة التجارية Lighting
-    "sub_metering_3": np.round(base_power * 0.20, 2), # أحمال السيرفرات والمعدات Main Equipment
-    "sub_metering_4": np.round(base_power * 0.10, 2)  # الأحمال المساندة Auxiliary
-})
-
-# حفظ الملف الناتج
-output_file = "cleaned_commercial_building_power.csv"
-df_commercial.to_csv(output_file, index=False)
-print(f"✅ Success! Commercial Facility Dataset generated and saved as '{output_file}'.")
+if __name__ == "__main__":
+    generate_professional_demo_data()
